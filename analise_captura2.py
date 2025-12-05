@@ -115,24 +115,6 @@ def analisar_captura(arquivo_pcap, limit=None):
     for s, c in sizes.most_common(10):
         print(f"  {s} bytes: {c} pacotes")
 
-    # Sugestão de descrição automática (heurística simples)
-    print("\n--- Descrição rápida (heurística) ---")
-    hints = []
-    if proto.get('TCP', 0) > 0:
-        hints.append('Tráfego TCP presente')
-    if proto.get('UDP', 0) > 0:
-        hints.append('Tráfego UDP presente')
-    if proto.get('ARP', 0) > 0:
-        hints.append('Mensagens ARP detectadas')
-    if proto.get('ICMP', 0) > 0:
-        hints.append('Mensagens ICMP detectadas')
-
-    if hints:
-        print('  ' + '; '.join(hints))
-    else:
-        print('  Nenhuma assinatura IP/ARP/TCP/UDP detectada')
-
-    print("\n" + "=" * 80)
     return True
 
 
