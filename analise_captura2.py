@@ -1,29 +1,21 @@
-#!/usr/bin/env python3
-"""quest2.py
-Análise do arquivo capturas/captura2.pcap para a Questão 2.
-Imprime sequência de pacotes (timestamp + summary) e estatísticas.
-Uso: python3 quest2.py [-n LIMIT]
-"""
-
-import argparse
 import os
 from collections import Counter
-#!/usr/bin/env python3
 from scapy.all import *
-from collections import Counter
-import os
-import argparse
 
 # ============================================================================
 # QUESTÃO 2 - Análise do arquivo de captura captura2.pcap
 # ============================================================================
+# Implemente um código em Python, utilizando a biblioteca Scapy, 
+# para analisar o arquivo de captura captura2.pcap.
+# Em seguida, responda:
+# (a) Descreva o que foi capturado neste tráfego de rede
+# e apresente, por meio da sequência de pacotes, de
+# que se trata esta captura.
+# (b) Apresente estatísticas sobre a quantidade e tipo
+# de pacotes capturados.
 
 def analisar_captura(arquivo_pcap, limit=None):
-    """Analisa captura2.pcap e responde à Questão 2.
 
-    (a) Descreve a comunicação e mostra a sequência de pacotes (limitável).
-    (b) Apresenta estatísticas sobre quantidade e tipo de pacotes.
-    """
     # Verificar se o arquivo existe
     if not os.path.exists(arquivo_pcap):
         print(f"Erro: arquivo {arquivo_pcap} não encontrado!")
@@ -95,31 +87,31 @@ def analisar_captura(arquivo_pcap, limit=None):
         pct = (c / total_packets) * 100 if total_packets > 0 else 0
         print(f"  {p}: {c} pacotes ({pct:.1f}%)")
 
-    print("\n--- IPs de origem (top 10) ---")
+    print("\n--- IPs de origem ---")
     for ip, c in src_ips.most_common(10):
         print(f"  {ip}: {c} pacotes")
 
-    print("\n--- IPs de destino (top 10) ---")
+    print("\n--- IPs de destino ---")
     for ip, c in dst_ips.most_common(10):
         print(f"  {ip}: {c} pacotes")
 
-    print("\n--- MACs de origem (top 10) ---")
+    print("\n--- MACs de origem ---")
     for m, c in src_macs.most_common(10):
         print(f"  {m}: {c} pacotes")
 
-    print("\n--- MACs de destino (top 10) ---")
+    print("\n--- MACs de destino ---")
     for m, c in dst_macs.most_common(10):
         print(f"  {m}: {c} pacotes")
 
-    print("\n--- Portas TCP (origem -> destino) - top 10 ---")
+    print("\n--- Portas TCP (origem -> destino) ---")
     for p, c in tcp_ports.most_common(10):
         print(f"  {p}: {c} pacotes")
 
-    print("\n--- Portas UDP (origem -> destino) - top 10 ---")
+    print("\n--- Portas UDP (origem -> destino) ---")
     for p, c in udp_ports.most_common(10):
         print(f"  {p}: {c} pacotes")
 
-    print("\n--- Tamanhos de pacote mais comuns (bytes) - top 10 ---")
+    print("\n--- Tamanhos de pacote mais comuns (bytes) ---")
     for s, c in sizes.most_common(10):
         print(f"  {s} bytes: {c} pacotes")
 
@@ -145,8 +137,4 @@ def analisar_captura(arquivo_pcap, limit=None):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Questão 2 - análise de captura2.pcap')
-    parser.add_argument('-n', '--limit', type=int, help='Número máximo de pacotes a mostrar (padrão: todos)')
-    parser.add_argument('-p', '--pcap', default='./capturas/captura2.pcap', help='Caminho para o arquivo pcap')
-    args = parser.parse_args()
-    analisar_captura(args.pcap, limit=args.limit)
+    analisar_captura('./capturas/captura2.pcap')

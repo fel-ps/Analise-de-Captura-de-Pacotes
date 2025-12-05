@@ -1,23 +1,32 @@
-#!/usr/bin/env python3
 from scapy.all import rdpcap
 from collections import Counter, defaultdict
 import os
-import argparse
 
-"""quest3.py
-Analisa `captura3-1.pcap` e `captura3-2.pcap` seguindo o mesmo formato
-das questões anteriores. Gera estatísticas de IPs/portas e tenta inferir
-mapas de NAT (origem antes -> origem depois).
-
-Uso:
-  python3 quest3.py
-  python3 quest3.py -n 200
-  python3 quest3.py --pre ./capturas/captura3-1.pcap --post ./capturas/captura3-2.pcap -n 500
-"""
+# ============================================================================
+# QUESTÃO 3 - Análise do arquivo de captura captura3-1.pcap e captura3-2.pcap
+# ============================================================================
+# Implemente um código em Python, utilizando a biblioteca Scapy, para analisar os arquivos de captura
+# captura3-1.pcap e captura3-2.pcap. Em seguida,
+# responda:
+#
+# (a) Apresente estatísticas sobre os IPs de origem e
+# destino das capturas
+# (b) Apresente estatísticas sobre as portas de origem e
+# destino das capturas.
+# (c) Estas capturas representam capturas de um tr´afego
+# de redes que passam por um roteador fazendo
+# NAT (Network Address Translation). Estas s˜ao
+# realizadas antes e depois do roteador. Com base
+# nisto, responda:
+#   i. Qual é o IP de origem e de destino antes e
+#   após a tradução do NAT.
+#   ii. Qual são as portas de origem e de destino
+#   antes e após a tradução do NAT.
+#   iii. Justifique suas respostas a
+# ============================================================================
 
 
 def extract_flow_info(pkt):
-    """Retorna (proto, src_ip, src_port, dst_ip, dst_port) ou None se não aplicável."""
     try:
         if pkt.haslayer('IP'):
             proto = None
@@ -89,16 +98,16 @@ def analisar_captura(pre_path, post_path, limit=None):
 
         print(f"--- Estatísticas ({cap_name}) ---")
         print(f"Protocolos: {', '.join(f'{k}:{v}' for k,v in proto.most_common())}")
-        print(f"IPs de origem (top 10):")
+        print(f"IPs de origem:")
         for ip, c in src_ips.most_common(10):
             print(f"  {ip}: {c}")
-        print(f"IPs de destino (top 10):")
+        print(f"IPs de destino:")
         for ip, c in dst_ips.most_common(10):
             print(f"  {ip}: {c}")
-        print(f"Portas de origem (top 10):")
+        print(f"Portas de origem:")
         for p, c in src_ports.most_common(10):
             print(f"  {p}: {c}")
-        print(f"Portas de destino (top 10):")
+        print(f"Portas de destino:")
         for p, c in dst_ports.most_common(10):
             print(f"  {p}: {c}")
         print("")
@@ -166,18 +175,9 @@ def analisar_captura(pre_path, post_path, limit=None):
         pre_f, post_f = pair
         print(f"  {left} -> {right}   (proto={pre_f['proto']}, dst={pre_f['dip']}:{pre_f['dport']})")
 
-    print("\nObservação: a heurística assume que o destino (dst IP:port) ")
-    print("permanece o mesmo antes/depois do NAT e que o que muda é a origem.")
-    print("Use as ocorrências listadas acima para justificar as respostas (i)-(iii).\n")
-
     print("=" * 80)
     return True
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Questão 3 - análise antes/depois do NAT')
-    parser.add_argument('--pre', default='./capturas/captura3-1.pcap', help='Arquivo pcap antes do NAT')
-    parser.add_argument('--post', default='./capturas/captura3-2.pcap', help='Arquivo pcap depois do NAT')
-    parser.add_argument('-n', '--limit', type=int, help='Limitar análise a N pacotes (opcional)')
-    args = parser.parse_args()
-    analisar_captura(args.pre, args.post, limit=args.limit)
+    analisar_captura('./capturas/captura3-1.pcap', './capturas/captura3-2.pcap')

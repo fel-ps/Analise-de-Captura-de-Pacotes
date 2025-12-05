@@ -14,7 +14,6 @@ import os
 # ============================================================================
 
 def analisar_captura(arquivo_pcap):
-    """Analisa um arquivo de captura PCAP e responde às questões"""
     
     # Verificar se o arquivo existe
     if not os.path.exists(arquivo_pcap):
