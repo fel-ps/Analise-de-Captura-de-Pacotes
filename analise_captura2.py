@@ -1,138 +1,152 @@
 #!/usr/bin/env python3
-# analise_captura2.py
-#
-# Análise de uma captura PCAP para identificar sequência de pacotes
-# e estatísticas de protocolos — usado na Questão 2 do trabalho.
+"""quest2.py
+Análise do arquivo capturas/captura2.pcap para a Questão 2.
+Imprime sequência de pacotes (timestamp + summary) e estatísticas.
+Uso: python3 quest2.py [-n LIMIT]
+"""
 
-from scapy.all import rdpcap
+import argparse
+import os
 from collections import Counter
+#!/usr/bin/env python3
+from scapy.all import *
+from collections import Counter
+import os
+import argparse
 
-# Arquivo PCAP a ser analisado
-PCAP_FILE = "capturas/captura2.pcap"
+# ============================================================================
+# QUESTÃO 2 - Análise do arquivo de captura captura2.pcap
+# ============================================================================
 
+def analisar_captura(arquivo_pcap, limit=None):
+    """Analisa captura2.pcap e responde à Questão 2.
 
-# -----------------------------------------------------------
-# Função: imprime um resumo da sequência de pacotes
-# -----------------------------------------------------------
-def resumo_sequencia_pacotes(pacotes, limite=200):
+    (a) Descreve a comunicação e mostra a sequência de pacotes (limitável).
+    (b) Apresenta estatísticas sobre quantidade e tipo de pacotes.
     """
-    Exibe os primeiros 'limite' pacotes da captura.
-    Para cada pacote, imprime:
-    - índice
-    - timestamp
-    - IP origem → destino
-    - protocolo (TCP/UDP/ICMP)
-    - portas e flags no caso de TCP
-    """
+    # Verificar se o arquivo existe
+    if not os.path.exists(arquivo_pcap):
+        print(f"Erro: arquivo {arquivo_pcap} não encontrado!")
+        return False
 
-    for i, p in enumerate(pacotes):
-        if i >= limite:
-            break
+    # Carregar pacotes
+    packets = rdpcap(arquivo_pcap)
+    total_packets = len(packets)
 
-        tempo = getattr(p, "time", 0)
-        protocolo = "?"
-        info = ""
+    # Ajustar limite
+    if limit is None or limit <= 0 or limit > total_packets:
+        limit = total_packets
 
-        if p.haslayer("IP"):
-            src = p["IP"].src
-            dst = p["IP"].dst
+    print("=" * 80)
+    print("ANÁLISE DA CAPTURA DE REDE - captura2.pcap")
+    print("=" * 80)
 
-            # Pacote TCP
-            if p.haslayer("TCP"):
-                protocolo = "TCP"
-                info = (
-                    f"{p['TCP'].sport} -> {p['TCP'].dport} "
-                    f"flags={p['TCP'].flags} "
-                    f"len={len(p['TCP'].payload)}"
-                )
+    # (a) Sequência de pacotes — mostrar os primeiros `limit` pacotes com timestamp e summary
+    print("\n(a) SEQUÊNCIA DE PACOTES (mostrando os primeiros {} pacotes):".format(limit))
+    for i, pkt in enumerate(packets[:limit], start=1):
+        ts = getattr(pkt, 'time', None)
+        timestr = f"{ts:.6f}" if ts is not None else "-"
+        try:
+            summary = pkt.summary()
+        except Exception:
+            summary = "(erro no summary)"
+        print(f"#{i:04d}  {timestr}  {summary}")
 
-            # Pacote UDP
-            elif p.haslayer("UDP"):
-                protocolo = "UDP"
-                info = (
-                    f"{p['UDP'].sport} -> {p['UDP'].dport} "
-                    f"len={len(p['UDP'].payload)}"
-                )
+    # (b) Estatísticas
+    print("\n" + "=" * 80)
+    print("(b) ESTATÍSTICAS GERAIS")
 
-            # Pacote ICMP
-            elif p.haslayer("ICMP"):
-                protocolo = "ICMP"
-            
-            # Qualquer outro protocolo IP
-            else:
-                protocolo = p.lastlayer().name
+    # inicializando contadores
+    proto = Counter()
+    src_ips = Counter()
+    dst_ips = Counter()
+    src_macs = Counter()
+    dst_macs = Counter()
+    tcp_ports = Counter()
+    udp_ports = Counter()
+    sizes = Counter()
 
-            print(f"{i:04d} t={tempo:.6f} {src} -> {dst} {protocolo} {info}")
+    for pkt in packets:
+        sizes[len(bytes(pkt))] += 1
+        if pkt.haslayer('Ether'):
+            proto['Ether'] += 1
+            src_macs[pkt['Ether'].src] += 1
+            dst_macs[pkt['Ether'].dst] += 1
+        if pkt.haslayer('ARP'):
+            proto['ARP'] += 1
+        if pkt.haslayer('IP'):
+            proto['IP'] += 1
+            src_ips[pkt['IP'].src] += 1
+            dst_ips[pkt['IP'].dst] += 1
+            if pkt.haslayer('TCP'):
+                proto['TCP'] += 1
+                tcp_ports[f"{pkt['TCP'].sport} -> {pkt['TCP'].dport}"] += 1
+            elif pkt.haslayer('UDP'):
+                proto['UDP'] += 1
+                udp_ports[f"{pkt['UDP'].sport} -> {pkt['UDP'].dport}"] += 1
+            elif pkt.haslayer('ICMP'):
+                proto['ICMP'] += 1
+        # outros protocolos serão contabilizados como 'Outro' se necessário
 
-        else:
-            # Pacote não-IP (ARP, LLC etc.)
-            print(f"{i:04d} NON-IP {p.summary()}")
+    # imprimir estatísticas resumidas
+    print(f"Total de pacotes no arquivo: {total_packets}")
+    print("\n--- Protocolos (contagem de pacotes que contêm cada protocolo) ---")
+    for p, c in proto.most_common():
+        pct = (c / total_packets) * 100 if total_packets > 0 else 0
+        print(f"  {p}: {c} pacotes ({pct:.1f}%)")
+
+    print("\n--- IPs de origem (top 10) ---")
+    for ip, c in src_ips.most_common(10):
+        print(f"  {ip}: {c} pacotes")
+
+    print("\n--- IPs de destino (top 10) ---")
+    for ip, c in dst_ips.most_common(10):
+        print(f"  {ip}: {c} pacotes")
+
+    print("\n--- MACs de origem (top 10) ---")
+    for m, c in src_macs.most_common(10):
+        print(f"  {m}: {c} pacotes")
+
+    print("\n--- MACs de destino (top 10) ---")
+    for m, c in dst_macs.most_common(10):
+        print(f"  {m}: {c} pacotes")
+
+    print("\n--- Portas TCP (origem -> destino) - top 10 ---")
+    for p, c in tcp_ports.most_common(10):
+        print(f"  {p}: {c} pacotes")
+
+    print("\n--- Portas UDP (origem -> destino) - top 10 ---")
+    for p, c in udp_ports.most_common(10):
+        print(f"  {p}: {c} pacotes")
+
+    print("\n--- Tamanhos de pacote mais comuns (bytes) - top 10 ---")
+    for s, c in sizes.most_common(10):
+        print(f"  {s} bytes: {c} pacotes")
+
+    # Sugestão de descrição automática (heurística simples)
+    print("\n--- Descrição rápida (heurística) ---")
+    hints = []
+    if proto.get('TCP', 0) > 0:
+        hints.append('Tráfego TCP presente')
+    if proto.get('UDP', 0) > 0:
+        hints.append('Tráfego UDP presente')
+    if proto.get('ARP', 0) > 0:
+        hints.append('Mensagens ARP detectadas')
+    if proto.get('ICMP', 0) > 0:
+        hints.append('Mensagens ICMP detectadas')
+
+    if hints:
+        print('  ' + '; '.join(hints))
+    else:
+        print('  Nenhuma assinatura IP/ARP/TCP/UDP detectada')
+
+    print("\n" + "=" * 80)
+    return True
 
 
-# -----------------------------------------------------------
-# Função: estatísticas de protocolos
-# -----------------------------------------------------------
-def estatisticas_protocolos(pacotes):
-    """
-    Conta quantos pacotes existem de cada protocolo.
-    """
-    cont = Counter()
-
-    for p in pacotes:
-        if p.haslayer("TCP"):
-            cont["TCP"] += 1
-        elif p.haslayer("UDP"):
-            cont["UDP"] += 1
-        elif p.haslayer("ICMP"):
-            cont["ICMP"] += 1
-        elif p.haslayer("ARP"):
-            cont["ARP"] += 1
-        else:
-            cont[p.lastlayer().name] += 1
-
-    return cont
-
-
-# -----------------------------------------------------------
-# PROGRAMA PRINCIPAL
-# -----------------------------------------------------------
-def main():
-    pacotes = rdpcap(PCAP_FILE)
-
-    print(f"Arquivo carregado: {PCAP_FILE}")
-    print(f"Número total de pacotes: {len(pacotes)}\n")
-
-    # Sequência dos primeiros pacotes
-    print("=== Sequência de pacotes (primeiros 200) ===")
-    resumo_sequencia_pacotes(pacotes, limite=200)
-
-    # Estatísticas por protocolo
-    print("\n=== Estatísticas por protocolo ===")
-    stats = estatisticas_protocolos(pacotes)
-    for proto, qtd in stats.most_common():
-        print(f"  {proto}: {qtd} pacotes")
-
-    # Estatísticas de portas TCP/UDP
-    print("\n=== Principais portas (origem e destino) ===")
-    portas_origem = Counter()
-    portas_destino = Counter()
-
-    for p in pacotes:
-        if p.haslayer("TCP"):
-            portas_origem[p['TCP'].sport] += 1
-            portas_destino[p['TCP'].dport] += 1
-        if p.haslayer("UDP"):
-            portas_origem[p['UDP'].sport] += 1
-            portas_destino[p['UDP'].dport] += 1
-
-    print("Top 10 portas de origem:")
-    for porta, qtd in portas_origem.most_common(10):
-        print(f"  {porta}: {qtd}")
-
-    print("\nTop 10 portas de destino:")
-    for porta, qtd in portas_destino.most_common(10):
-        print(f"  {porta}: {qtd}")
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Questão 2 - análise de captura2.pcap')
+    parser.add_argument('-n', '--limit', type=int, help='Número máximo de pacotes a mostrar (padrão: todos)')
+    parser.add_argument('-p', '--pcap', default='./capturas/captura2.pcap', help='Caminho para o arquivo pcap')
+    args = parser.parse_args()
+    analisar_captura(args.pcap, limit=args.limit)

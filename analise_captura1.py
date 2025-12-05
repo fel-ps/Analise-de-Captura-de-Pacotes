@@ -1,118 +1,145 @@
-#!/usr/bin/env python3
-# analise_captura1.py — Versão traduzida e comentada
-# Objetivo: analisar uma captura .pcap extraindo estatísticas essenciais
-# Uso: python3 analise_captura1.py
-
-from scapy.all import rdpcap
+from scapy.all import *
 from collections import Counter
+import os
 
-# Caminho do arquivo PCAP
-PCAP_FILE = "capturas/captura1.pcap"
+# ============================================================================
+# QUESTÃO 1 - Análise do arquivo de captura captura1.pcap
+# ============================================================================
+# Implemente um código em Python, utilizando a biblioteca Scapy, 
+# para analisar o arquivo de captura captura1.pcap.
+# Em seguida, responda:
+# (a) De que se trata esta comunicação.
+# (b) Quais são os endereços envolvidos.
+# (c) Quantos pacotes são enviados neste tráfego de rede.
+# ============================================================================
 
-def detect_top_layers(packets, top_n=5):
-    """
-    Identifica as camadas (protocolos) mais comuns.
-    Exemplo: Ethernet, IP, TCP, UDP, ARP, ICMP etc.
-    """
-    cnt = Counter()
-    for p in packets:
-        # Obtém todas as camadas do pacote
-        layers = [l.name for l in p.layers()]
-        for l in layers:
-            cnt[l] += 1
-    return cnt.most_common(top_n)
-
-def detect_common_ports(packets, top_n=10):
-    """
-    Detecta as portas mais comuns de origem e destino
-    para tráfego TCP e UDP.
-    """
-    sport = Counter()   # portas de origem
-    dport = Counter()   # portas de destino
-
-    for p in packets:
-        if p.haslayer("TCP"):
-            sport[p["TCP"].sport] += 1
-            dport[p["TCP"].dport] += 1
-        elif p.haslayer("UDP"):
-            sport[p["UDP"].sport] += 1
-            dport[p["UDP"].dport] += 1
-
-    return sport.most_common(top_n), dport.most_common(top_n)
-
-def unique_addresses(packets):
-    """
-    Conta quantos pacotes cada endereço IP enviou (origem)
-    e quantos recebeu (destino).
-    """
-    src = Counter()
-    dst = Counter()
-
-    for p in packets:
-        if p.haslayer("IP"):
-            src[p["IP"].src] += 1
-            dst[p["IP"].dst] += 1
-
-    return src, dst
-
-def main():
-    # Carrega os pacotes do arquivo .pcap
-    packets = rdpcap(PCAP_FILE)
-
-    print(f"Arquivo analisado: {PCAP_FILE}")
-    print(f"Número total de pacotes capturados: {len(packets)}\n")
-
-    # --- Topo das camadas ---
-    print("Camadas mais frequentes (Top Layers):")
-    for name, count in detect_top_layers(packets):
-        print(f"  {name}: {count}")
-    print()
-
-    # --- Endereços IP ---
-    src, dst = unique_addresses(packets)
-
-    print("Endereços de origem mais frequentes:")
-    for ip, c in src.most_common(10):
-        print(f"  {ip}: {c} pacotes")
-    print()
-
-    print("Endereços de destino mais frequentes:")
-    for ip, c in dst.most_common(10):
-        print(f"  {ip}: {c} pacotes")
-    print()
-
-    # --- Portas ---
-    tcp_sport, tcp_dport = detect_common_ports(packets)
-
-    if tcp_sport or tcp_dport:
-        print("Portas de ORIGEM mais comuns:")
-        for p, c in tcp_sport:
-            print(f"  {p}: {c}")
-        print()
-
-        print("Portas de DESTINO mais comuns:")
-        for p, c in tcp_dport:
-            print(f"  {p}: {c}")
-        print()
-
-    # --- Sugestão de tipo de comunicação ---
-    print("Sugestão do tipo de tráfego (heurística):")
-
-    top_layers = detect_top_layers(packets, top_n=8)
-    layer_names = [t[0] for t in top_layers]
-
-    # Heurística baseada em camadas e portas
-    if "HTTP" in layer_names or any(port in [80, 443] for port,_ in tcp_dport):
-        print("  Possível tráfego HTTP/HTTPS (portas 80 ou 443 detectadas).")
-    elif "DNS" in layer_names or any(port == 53 for port,_ in tcp_dport):
-        print("  Possível tráfego DNS (porta 53 detectada).")
-    elif "ARP" in layer_names:
-        print("  Tráfego de resolução de endereços (ARP).")
-    elif "ICMP" in layer_names:
-        print("  Tráfego ICMP detectado (possível ping – echo-request/echo-reply).")
-    else:
-        print("  Tipo de tráfego não evidente — verificar packet.show().")
-
+def analisar_captura(arquivo_pcap):
+    """Analisa um arquivo de captura PCAP e responde às questões"""
+    
+    # Verificar se o arquivo existe
+    if not os.path.exists(arquivo_pcap):
+        print(f"Erro: arquivo {arquivo_pcap} não encontrado!")
+        return False
+    
+    # Carregar os pacotes do arquivo de captura
+    packets = rdpcap(arquivo_pcap)
+    
+    print("=" * 80)
+    print("ANÁLISE DA CAPTURA DE REDE - captura1.pcap")
+    print("=" * 80)
+    
+    # ========================================================================
+    # (C) Quantos pacotes são enviados neste tráfego de rede
+    # ========================================================================
+    total_packets = len(packets)
+    print(f"\n(C) TOTAL DE PACOTES CAPTURADOS: {total_packets}")
+    
+    # ========================================================================
+    # (B) Quais são os endereços envolvidos
+    # ========================================================================
+    src_ips = Counter()
+    dst_ips = Counter()
+    src_macs = Counter()
+    dst_macs = Counter()
+    protocols = Counter()
+    
+    for packet in packets:
+        # Contabilizar IPs
+        if packet.haslayer("IP"):
+            src_ips[packet['IP'].src] += 1
+            dst_ips[packet['IP'].dst] += 1
+        
+        # Contabilizar MACs
+        if packet.haslayer("Ether"):
+            src_macs[packet['Ether'].src] += 1
+            dst_macs[packet['Ether'].dst] += 1
+        
+        # Contabilizar protocolos
+        if packet.haslayer("IP"):
+            if packet.haslayer("TCP"):
+                protocols["TCP"] += 1
+            elif packet.haslayer("UDP"):
+                protocols["UDP"] += 1
+            elif packet.haslayer("ICMP"):
+                protocols["ICMP"] += 1
+            else:
+                protocols["Outro"] += 1
+        elif packet.haslayer("ARP"):
+            protocols["ARP"] += 1
+        else:
+            protocols["Outro"] += 1
+    
+    print("\n(B) ENDEREÇOS ENVOLVIDOS:")
+    print("\n--- Endereços IP de Origem ---")
+    for ip, count in sorted(src_ips.items()):
+        print(f"  {ip}: {count} pacotes")
+    
+    print("\n--- Endereços IP de Destino ---")
+    for ip, count in sorted(dst_ips.items()):
+        print(f"  {ip}: {count} pacotes")
+    
+    print("\n--- Endereços MAC de Origem ---")
+    for mac, count in sorted(src_macs.items()):
+        print(f"  {mac}: {count} pacotes")
+    
+    print("\n--- Endereços MAC de Destino ---")
+    for mac, count in sorted(dst_macs.items()):
+        print(f"  {mac}: {count} pacotes")
+    
+    # ========================================================================
+    # (A) De que se trata esta comunicação
+    # ========================================================================
+    print("\n(A) TIPO DE COMUNICAÇÃO:")
+    print("\n--- Protocolos Utilizados ---")
+    for proto, count in sorted(protocols.items(), key=lambda x: x[1], reverse=True):
+        percentage = (count / total_packets) * 100
+        print(f"  {proto}: {count} pacotes ({percentage:.1f}%)")
+    
+    # Análise adicional por protocolo
+    print("\n--- Análise Detalhada por Protocolo ---")
+    
+    tcp_count = sum(1 for p in packets if p.haslayer("TCP"))
+    if tcp_count > 0:
+        print(f"\nTCP: {tcp_count} pacotes")
+        tcp_ports = Counter()
+        for packet in packets:
+            if packet.haslayer("TCP"):
+                tcp_ports[f"{packet['TCP'].sport} -> {packet['TCP'].dport}"] += 1
+        print("  Portas utilizadas (origem -> destino):")
+        for ports, count in tcp_ports.most_common(5):
+            print(f"    {ports}: {count} pacotes")
+    
+    udp_count = sum(1 for p in packets if p.haslayer("UDP"))
+    if udp_count > 0:
+        print(f"\nUDP: {udp_count} pacotes")
+        udp_ports = Counter()
+        for packet in packets:
+            if packet.haslayer("UDP"):
+                udp_ports[f"{packet['UDP'].sport} -> {packet['UDP'].dport}"] += 1
+        print("  Portas utilizadas (origem -> destino):")
+        for ports, count in udp_ports.most_common(5):
+            print(f"    {ports}: {count} pacotes")
+    
+    icmp_count = sum(1 for p in packets if p.haslayer("ICMP"))
+    if icmp_count > 0:
+        print(f"\nICMP: {icmp_count} pacotes")
+    
+    arp_count = sum(1 for p in packets if p.haslayer("ARP"))
+    if arp_count > 0:
+        print(f"\nARP: {arp_count} pacotes")
+    
+    # Resumo geral
+    print("\n" + "=" * 80)
+    print("RESUMO GERAL")
+    print("=" * 80)
+    print(f"Total de pacotes: {total_packets}")
+    print(f"Quantidade de IPs de origem únicos: {len(src_ips)}")
+    print(f"Quantidade de IPs de destino únicos: {len(dst_ips)}")
+    print(f"Quantidade de MACs de origem únicos: {len(src_macs)}")
+    print(f"Quantidade de MACs de destino únicos: {len(dst_macs)}")
+    print("=" * 80)
+    
+    return True
 
 if __name__ == "__main__":
-    main()
+    analisar_captura("./capturas/captura1.pcap")

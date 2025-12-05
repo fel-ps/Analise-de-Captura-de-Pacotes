@@ -1,163 +1,183 @@
 #!/usr/bin/env python3
-# analise_captura3.py
-#
-# Análise de duas capturas PCAP (antes e depois do NAT)
-# Usado para responder a Questão 3 do trabalho.
-
 from scapy.all import rdpcap
 from collections import Counter, defaultdict
+import os
+import argparse
 
-# Arquivos PCAP (ajuste o caminho caso necessário)
-PCAP_ANTES = "capturas/captura3-1.pcap"   # tráfego antes do roteador (rede interna)
-PCAP_DEPOIS = "capturas/captura3-2.pcap"  # tráfego depois do roteador (rede externa)
+"""quest3.py
+Analisa `captura3-1.pcap` e `captura3-2.pcap` seguindo o mesmo formato
+das questões anteriores. Gera estatísticas de IPs/portas e tenta inferir
+mapas de NAT (origem antes -> origem depois).
 
-# -----------------------------------------------------------
-# Função que calcula estatísticas de IP e portas
-# -----------------------------------------------------------
-def estatisticas_ip_portas(pacotes):
-    """
-    Retorna contadores:
-    - IPs de origem
-    - IPs de destino
-    - Portas de origem (TCP/UDP)
-    - Portas de destino (TCP/UDP)
-    """
-    ips_origem = Counter()
-    ips_destino = Counter()
-    portas_origem = Counter()
-    portas_destino = Counter()
-
-    for p in pacotes:
-        if p.haslayer("IP"):
-            ips_origem[p['IP'].src] += 1
-            ips_destino[p['IP'].dst] += 1
-
-            # Se for TCP
-            if p.haslayer("TCP"):
-                portas_origem[p['TCP'].sport] += 1
-                portas_destino[p['TCP'].dport] += 1
-            
-            # Se for UDP
-            elif p.haslayer("UDP"):
-                portas_origem[p['UDP'].sport] += 1
-                portas_destino[p['UDP'].dport] += 1
-
-    return ips_origem, ips_destino, portas_origem, portas_destino
+Uso:
+  python3 quest3.py
+  python3 quest3.py -n 200
+  python3 quest3.py --pre ./capturas/captura3-1.pcap --post ./capturas/captura3-2.pcap -n 500
+"""
 
 
-# -----------------------------------------------------------
-# Tentativa de inferir como o NAT alterou IP/portas
-# -----------------------------------------------------------
-def inferir_nat(pacotes_antes, pacotes_depois):
-    """
-    Tenta identificar qual IP/porta interna virou qual IP/porta externa.
-    Usa uma heurística baseada em:
-    - Mesmo IP de destino
-    - Mesma porta de destino
-    - Mesmo tamanho de payload
-    """
-    mapeamentos = Counter()
+def extract_flow_info(pkt):
+    """Retorna (proto, src_ip, src_port, dst_ip, dst_port) ou None se não aplicável."""
+    try:
+        if pkt.haslayer('IP'):
+            proto = None
+            sport = None
+            dport = None
+            if pkt.haslayer('TCP'):
+                proto = 'TCP'
+                sport = pkt['TCP'].sport
+                dport = pkt['TCP'].dport
+            elif pkt.haslayer('UDP'):
+                proto = 'UDP'
+                sport = pkt['UDP'].sport
+                dport = pkt['UDP'].dport
+            else:
+                proto = 'IP'
 
-    # Indexa pacotes "depois" por (destino, porta destino, tamanho payload)
-    indice_depois = defaultdict(list)
-    for p in pacotes_depois:
-        if p.haslayer("IP"):
-            dst = p['IP'].dst
-            if p.haslayer("TCP"):
-                dport = p['TCP'].dport
-                tamanho = len(p['TCP'].payload)
-                indice_depois[(dst, dport, tamanho)].append(p)
-
-            elif p.haslayer("UDP"):
-                dport = p['UDP'].dport
-                tamanho = len(p['UDP'].payload)
-                indice_depois[(dst, dport, tamanho)].append(p)
-
-    # Para cada pacote "antes", tenta achar o correspondente "depois"
-    for p in pacotes_antes:
-        if p.haslayer("IP"):
-            ip_origem_antes = p['IP'].src
-
-            if p.haslayer("TCP"):
-                porta_origem_antes = p['TCP'].sport
-                porta_destino = p['TCP'].dport
-                tamanho = len(p['TCP'].payload)
-
-                chave = (p['IP'].dst, porta_destino, tamanho)
-                candidatos = indice_depois.get(chave, [])
-
-                for c in candidatos:
-                    ip_traduzido = c['IP'].src
-                    porta_traduzida = c['TCP'].sport
-                    mapeamentos[((ip_origem_antes, porta_origem_antes), 
-                                 (ip_traduzido, porta_traduzida))] += 1
-
-            elif p.haslayer("UDP"):
-                porta_origem_antes = p['UDP'].sport
-                porta_destino = p['UDP'].dport
-                tamanho = len(p['UDP'].payload)
-
-                chave = (p['IP'].dst, porta_destino, tamanho)
-                candidatos = indice_depois.get(chave, [])
-
-                for c in candidatos:
-                    ip_traduzido = c['IP'].src
-                    porta_traduzida = c['UDP'].sport
-                    mapeamentos[((ip_origem_antes, porta_origem_antes), 
-                                 (ip_traduzido, porta_traduzida))] += 1
-
-    return mapeamentos
+            return (proto, pkt['IP'].src, sport, pkt['IP'].dst, dport)
+        elif pkt.haslayer('ARP'):
+            return ('ARP', pkt['ARP'].psrc, None, pkt['ARP'].pdst, None)
+    except Exception:
+        return None
+    return None
 
 
-# -----------------------------------------------------------
-# Impressão formatada dos contadores
-# -----------------------------------------------------------
-def imprimir_top(contador, titulo, top=10):
-    print(titulo)
-    for k, v in contador.most_common(top):
-        print(f"  {k}: {v}")
-    print()
+def analisar_captura(pre_path, post_path, limit=None):
+    # verificar arquivos
+    if not os.path.exists(pre_path):
+        print(f"Erro: arquivo {pre_path} não encontrado!")
+        return False
+    if not os.path.exists(post_path):
+        print(f"Erro: arquivo {post_path} não encontrado!")
+        return False
 
+    pre_pkts = rdpcap(pre_path)
+    post_pkts = rdpcap(post_path)
 
-# -----------------------------------------------------------
-# PROGRAMA PRINCIPAL
-# -----------------------------------------------------------
-def main():
-    # Lendo os PCAPs
-    antes = rdpcap(PCAP_ANTES)
-    depois = rdpcap(PCAP_DEPOIS)
+    total_pre = len(pre_pkts)
+    total_post = len(post_pkts)
 
-    print(f"Analisando:\n - {PCAP_ANTES} (antes do NAT)\n - {PCAP_DEPOIS} (depois do NAT)\n")
+    if limit is None or limit <= 0:
+        limit = max(total_pre, total_post)
 
-    print(f"Número de pacotes (antes): {len(antes)}")
-    print(f"Número de pacotes (depois): {len(depois)}\n")
+    print("=" * 80)
+    print("QUESTÃO 3 - ANÁLISE DE CAPTURAS ANTES/DEPOIS DO ROTEADOR (NAT)")
+    print(f"Arquivos: pre={pre_path}, post={post_path}")
+    print(f"Pacotes: pre={total_pre}, post={total_post}\n")
 
-    # Estatísticas dos dois arquivos
-    a_src, a_dst, a_psrc, a_pdst = estatisticas_ip_portas(antes)
-    d_src, d_dst, d_psrc, d_pdst = estatisticas_ip_portas(depois)
+    # Estatísticas por captura
+    def stats(pkts, cap_name):
+        src_ips = Counter()
+        dst_ips = Counter()
+        src_ports = Counter()
+        dst_ports = Counter()
+        proto = Counter()
+        for pkt in pkts:
+            info = extract_flow_info(pkt)
+            if not info:
+                continue
+            pproto, sip, sport, dip, dport = info
+            proto[pproto] += 1
+            if sip:
+                src_ips[sip] += 1
+            if dip:
+                dst_ips[dip] += 1
+            if sport is not None:
+                src_ports[sport] += 1
+            if dport is not None:
+                dst_ports[dport] += 1
 
-    print("========== ESTATÍSTICAS (ANTES DO NAT) ==========")
-    imprimir_top(a_src, "IPs de origem (antes):")
-    imprimir_top(a_dst, "IPs de destino (antes):")
-    imprimir_top(a_psrc, "Portas de origem (antes):")
-    imprimir_top(a_pdst, "Portas de destino (antes):")
+        print(f"--- Estatísticas ({cap_name}) ---")
+        print(f"Protocolos: {', '.join(f'{k}:{v}' for k,v in proto.most_common())}")
+        print(f"IPs de origem (top 10):")
+        for ip, c in src_ips.most_common(10):
+            print(f"  {ip}: {c}")
+        print(f"IPs de destino (top 10):")
+        for ip, c in dst_ips.most_common(10):
+            print(f"  {ip}: {c}")
+        print(f"Portas de origem (top 10):")
+        for p, c in src_ports.most_common(10):
+            print(f"  {p}: {c}")
+        print(f"Portas de destino (top 10):")
+        for p, c in dst_ports.most_common(10):
+            print(f"  {p}: {c}")
+        print("")
 
-    print("========== ESTATÍSTICAS (DEPOIS DO NAT) ==========")
-    imprimir_top(d_src, "IPs de origem (depois):")
-    imprimir_top(d_dst, "IPs de destino (depois):")
-    imprimir_top(d_psrc, "Portas de origem (depois):")
-    imprimir_top(d_pdst, "Portas de destino (depois):")
+        return {
+            'src_ips': src_ips,
+            'dst_ips': dst_ips,
+            'src_ports': src_ports,
+            'dst_ports': dst_ports,
+            'proto': proto,
+        }
 
-    # Tentativa de inferir o NAT
-    print("========== TENTATIVA DE IDENTIFICAR O NAT ==========")
-    mapeamentos = inferir_nat(antes, depois)
+    pre_stats = stats(pre_pkts, 'antes (captura3-1)')
+    post_stats = stats(post_pkts, 'depois (captura3-2)')
 
-    if mapeamentos:
-        for ((ip_int, porta_int), (ip_ext, porta_ext)), qtd in mapeamentos.most_common(20):
-            print(f"  {ip_int}:{porta_int}  ->  {ip_ext}:{porta_ext}  (ocorrências: {qtd})")
+    # Tentar inferir mapeamentos NAT
+    # Construir listas de fluxos (apenas TCP/UDP) com campos relevantes
+    def build_flows(pkts):
+        flows = []
+        for i, pkt in enumerate(pkts):
+            info = extract_flow_info(pkt)
+            if not info:
+                continue
+            proto, sip, sport, dip, dport = info
+            if proto in ('TCP', 'UDP'):
+                flows.append({'idx': i, 'proto': proto, 'sip': sip, 'sport': sport, 'dip': dip, 'dport': dport})
+        return flows
+
+    flows_pre = build_flows(pre_pkts)
+    flows_post = build_flows(post_pkts)
+
+    # Indexar post flows por (proto,dst_ip,dst_port) para busca rápida
+    post_index = defaultdict(list)
+    for f in flows_post:
+        key = (f['proto'], f['dip'], f['dport'])
+        post_index[key].append(f)
+
+    # Mapeamentos candidatos: pre (sip:sport) -> post (sip:sport)
+    mapping_counter = Counter()
+    mapping_examples = {}
+
+    for f in flows_pre:
+        key = (f['proto'], f['dip'], f['dport'])
+        candidates = post_index.get(key, [])
+        # se houver candidatos, escolhe o primeiro diferente de f (se possível)
+        for cand in candidates:
+            # geralmente o que muda é o sip/sport (NAT), dst permanece
+            if cand['sip'] != f['sip'] or cand['sport'] != f['sport']:
+                left = f"{f['sip']}:{f['sport']}"
+                right = f"{cand['sip']}:{cand['sport']}"
+                mapping_counter[(left, right)] += 1
+                if (left, right) not in mapping_examples:
+                    mapping_examples[(left, right)] = (f, cand)
+                break
+
+    print("--- Mapeamentos NAT candidatos (pre -> post) e contagem de ocorrências ---")
+    if mapping_counter:
+        for (left, right), cnt in mapping_counter.most_common(20):
+            print(f"  {left}  ->  {right}: {cnt} pacote(s)")
     else:
-        print("Nenhum mapeamento inferido automaticamente.")
+        print("  Nenhum mapeamento NAT claro detectado.")
+
+    print("\n--- Exemplos de mapeamentos encontrados ---")
+    for (left, right), pair in list(mapping_examples.items())[:10]:
+        pre_f, post_f = pair
+        print(f"  {left} -> {right}   (proto={pre_f['proto']}, dst={pre_f['dip']}:{pre_f['dport']})")
+
+    print("\nObservação: a heurística assume que o destino (dst IP:port) ")
+    print("permanece o mesmo antes/depois do NAT e que o que muda é a origem.")
+    print("Use as ocorrências listadas acima para justificar as respostas (i)-(iii).\n")
+
+    print("=" * 80)
+    return True
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Questão 3 - análise antes/depois do NAT')
+    parser.add_argument('--pre', default='./capturas/captura3-1.pcap', help='Arquivo pcap antes do NAT')
+    parser.add_argument('--post', default='./capturas/captura3-2.pcap', help='Arquivo pcap depois do NAT')
+    parser.add_argument('-n', '--limit', type=int, help='Limitar análise a N pacotes (opcional)')
+    args = parser.parse_args()
+    analisar_captura(args.pre, args.post, limit=args.limit)
